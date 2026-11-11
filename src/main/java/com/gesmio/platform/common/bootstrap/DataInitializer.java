@@ -1,3 +1,4 @@
+
 package com.gesmio.platform.common.bootstrap;
 
 import com.gesmio.platform.authorization.entity.Permission;
@@ -10,7 +11,9 @@ import com.gesmio.platform.authorization.repository.RoleRepository;
 import com.gesmio.platform.authorization.repository.UserRoleRepository;
 import com.gesmio.platform.identity.entity.User;
 import com.gesmio.platform.identity.repository.UserRepository;
+
 import java.util.List;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -20,20 +23,41 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-/**
- * Idempotent startup seeding:
- *  - system roles ADMIN, HR, MANAGER, EMPLOYEE
- *  - permissions "<module>.<action>" for every module, all granted to ADMIN
- *  - first admin account when ADMIN_EMAIL / ADMIN_PASSWORD are set and the email does not exist yet
- */
 @Component
 public class DataInitializer implements ApplicationRunner {
 
-    private static final Logger log = LoggerFactory.getLogger(DataInitializer.class);
-    private static final List<String> MODULES = List.of("administration","announcements","attendance","audit","authorization","documents","employees","identity","leave","notifications","organization","products","projects","recruitment","support","tasks");
-    private static final List<String> ACTIONS = List.of("read", "create", "update", "delete");
+    private static final Logger log =
+            LoggerFactory.getLogger(DataInitializer.class);
+
+    private static final List<String> MODULES = List.of(
+            "administration",
+            "announcements",
+            "attendance",
+            "audit",
+            "authorization",
+            "documents",
+            "employees",
+            "identity",
+            "leave",
+            "notifications",
+            "organization",
+            "products",
+            "projects",
+            "recruitment",
+            "support",
+            "tasks"
+    );
+
+    private static final List<String> ACTIONS = List.of(
+            "read", "create", "update", "delete"
+    );
+
     private static final String[][] ROLES = {
-            {"ADMIN", "Administrator"}, {"HR", "Human Resources"}, {"MANAGER", "Manager"}, {"EMPLOYEE", "Employee"}};
+            {"ADMIN", "Administrator"},
+            {"HR", "Human Resources"},
+            {"MANAGER", "Manager"},
+            {"EMPLOYEE", "Employee"}
+    };
 
     private final RoleRepository roles;
     private final PermissionRepository permissions;
@@ -44,11 +68,16 @@ public class DataInitializer implements ApplicationRunner {
     private final String adminEmail;
     private final String adminPassword;
 
-    public DataInitializer(RoleRepository roles, PermissionRepository permissions,
-                           RolePermissionRepository rolePermissions, UserRepository users,
-                           UserRoleRepository userRoles, PasswordEncoder encoder,
-                           @Value("${app.bootstrap.admin-email:}") String adminEmail,
-                           @Value("${app.bootstrap.admin-password:}") String adminPassword) {
+    public DataInitializer(
+            RoleRepository roles,
+            PermissionRepository permissions,
+            RolePermissionRepository rolePermissions,
+            UserRepository users,
+            UserRoleRepository userRoles,
+            PasswordEncoder encoder,
+            @Value("${app.bootstrap.admin-email:}") String adminEmail,
+            @Value("${app.bootstrap.admin-password:}") String adminPassword
+    ) {
         this.roles = roles;
         this.permissions = permissions;
         this.rolePermissions = rolePermissions;
@@ -62,45 +91,75 @@ public class DataInitializer implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        for (String[] r : ROLES) {
-            if (roles.findByCode(r[0]).isEmpty()) {
+
+        // Create system roles if they do not exist.
+        for (String[] roleData : ROLES) {
+
+            if (roles.findByCode(roleData[0]).isEmpty()) {
+
                 Role role = new Role();
-                role.setCode(r[0]);
-                role.setName(r[1]);
-                role.setIsSystem(true);
+                role.setCode(roleData[0]);
+                role.setName(roleData[1]);
+                role.setSystem(true);
+
                 roles.save(role);
             }
         }
-        Role admin = roles.findByCode("ADMIN").orElseThrow();
+
+        Role admin = roles.findByCode("ADMIN")
+                .orElseThrow();
+
+        // Create module permissions and assign them to ADMIN.
         for (String module : MODULES) {
+
             for (String action : ACTIONS) {
+
                 String code = module + "." + action;
-                Permission p = permissions.findByCode(code).orElseGet(() -> {
-                    Permission np = new Permission();
-                    np.setCode(code);
-                    np.setModule(module);
-                    np.setAction(action);
-                    return permissions.save(np);
-                });
-                if (!rolePermissions.existsByRoleIdAndPermissionId(admin.getId(), p.getId())) {
-                    RolePermission rp = new RolePermission();
-                    rp.setRoleId(admin.getId());
-                    rp.setPermissionId(p.getId());
-                    rolePermissions.save(rp);
+
+                Permission permission = permissions.findByCode(code)
+                        .orElseGet(() -> {
+
+                            Permission newPermission = new Permission();
+                            newPermission.setCode(code);
+                            newPermission.setModule(module);
+                            newPermission.setAction(action);
+
+                            return permissions.save(newPermission);
+                        });
+
+                if (!rolePermissions.existsByRoleIdAndPermissionId(
+                        admin.getId(),
+                        permission.getId()
+                )) {
+
+                    RolePermission rolePermission = new RolePermission();
+                    rolePermission.setRoleId(admin.getId());
+                    rolePermission.setPermissionId(permission.getId());
+
+                    rolePermissions.save(rolePermission);
                 }
             }
         }
-        if (!adminEmail.isBlank() && !adminPassword.isBlank() && !users.existsByEmailIgnoreCase(adminEmail)) {
+
+        // Create initial admin account if credentials are configured.
+        if (!adminEmail.isBlank()
+                && !adminPassword.isBlank()
+                && !users.existsByEmailIgnoreCase(adminEmail)) {
+
             User user = new User();
             user.setEmail(adminEmail.trim());
             user.setPasswordHash(encoder.encode(adminPassword));
             user.setStatus("ACTIVE");
+
             user = users.save(user);
-            UserRole ur = new UserRole();
-            ur.setUserId(user.getId());
-            ur.setRoleId(admin.getId());
-            ur.setScopeType("GLOBAL");
-            userRoles.save(ur);
+
+            UserRole userRole = new UserRole();
+            userRole.setUserId(user.getId());
+            userRole.setRoleId(admin.getId());
+            userRole.setScopeType("GLOBAL");
+
+            userRoles.save(userRole);
+
             log.info("Bootstrap admin user created: {}", adminEmail);
         }
     }
