@@ -1,12 +1,14 @@
+
 package com.gesmio.platform.authorization.entity;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+
+import java.util.UUID;
 
 @Entity
 @Table(name = "roles")
@@ -21,14 +23,14 @@ public class Role {
     private UUID id;
 
     @NotBlank
-    @Column(name = "code", length = 255, unique = true)
+    @Column(name = "code", nullable = false, unique = true, length = 255)
     private String code;
 
     @NotBlank
-    @Column(name = "name", length = 255)
+    @Column(name = "name", nullable = false, length = 255)
     private String name;
 
     @NotNull
-    @Column(name = "is_system")
-    private Boolean isSystem = false;
+    @Column(name = "is_system", nullable = false)
+    private Boolean system = false;
 }
